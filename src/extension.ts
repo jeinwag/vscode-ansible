@@ -1,6 +1,6 @@
 /* "stdlib" */
 import * as path from 'path';
-import { ExtensionContext } from 'vscode';
+import { ExtensionContext, extensions } from 'vscode';
 
 /* third-party */
 import {
@@ -12,11 +12,12 @@ import {
 
 /* local */
 import { AnsiblePlaybookRunProvider } from './features/runner';
-
+import { getConflictingExtensions, showUninstallConflictsNotification } from './extensionConflicts';
 
 let client: LanguageClient;
 
 export function activate(context: ExtensionContext): void {
+
   new AnsiblePlaybookRunProvider(context);
 
   const serverModule = context.asAbsolutePath(
@@ -49,6 +50,15 @@ export function activate(context: ExtensionContext): void {
 
   // start the client and the server
   client.start();
+
+  findConflicts();
+  client.onReady().then(() => {
+    // If the extensions change, fire this notification again to pick up on any association changes
+    extensions.onDidChange(() => {
+      findConflicts();
+    });
+  }
+  );
 }
 
 export function deactivate(): Thenable<void> | undefined {
@@ -57,3 +67,15 @@ export function deactivate(): Thenable<void> | undefined {
   }
   return client.stop();
 }
+
+/**
+ * Finds extensions that conflict with our extension.
+ * If one or more conflicts are found then show an uninstall notification
+ * If no conflicts are found then do nothing
+ */
+ function findConflicts(): void {
+  const conflictingExtensions = getConflictingExtensions();
+  if (conflictingExtensions.length > 0) {
+    showUninstallConflictsNotification(conflictingExtensions);
+  }
+ }

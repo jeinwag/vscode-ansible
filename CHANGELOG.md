@@ -2,7 +2,7 @@
 
 ## UNRELEASED
 
-* ...
+* Detect incompatible extensions and prompt to remove them.
 
 ## 0.4.5
 
