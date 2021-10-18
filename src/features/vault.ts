@@ -1,9 +1,6 @@
 import * as vscode from 'vscode';
 import * as utilAnsibleCfg from './utils/ansibleCfg';
 import * as cp from 'child_process';
-import * as util from 'util';
-
-const execAsync = util.promisify(cp.exec);
 
 async function askForVaultId(ansibleCfg: string) {
   const vaultId = 'default';
@@ -125,15 +122,36 @@ export const toggleEncrypt = async (): Promise<void> => {
         displayMissingIdentityError();
         return;
       }
-      encryptFile(doc.fileName, rootPath, vaultId, config);
+      const textRange = selectEverything(editor);
+      const text = editor.document.getText();
+      const encryptedText = await encryptText(text, rootPath, vaultId, config);
+      if (!!encryptedText) {
+        editor.edit((editBuilder) => {
+          editBuilder.replace(
+            textRange,
+            encryptedText
+              .replace('!vault |', '')
+              .trim()
+              .replace(/[^\S\r\n]+/gm, '')
+          );
+        });
+      }
       vscode.window.showInformationMessage(`File encrypted: '${doc.fileName}'`);
     } else if (type === 'encrypted') {
       console.log('Decrypt entire file');
-
-      await decryptFile(doc.fileName, rootPath, config);
+      const textRange = selectEverything(editor);
+      const decryptedText = await decryptText(
+        editor.document.getText(),
+        rootPath,
+        config
+      );
+      if (!!decryptedText) {
+        editor.edit((editBuilder) => {
+          editBuilder.replace(textRange, decryptedText);
+        });
+      }
       vscode.window.showInformationMessage(`File decrypted: '${doc.fileName}'`);
     }
-    vscode.commands.executeCommand('workbench.action.files.revert');
   }
 };
 
@@ -227,41 +245,9 @@ const decryptText = async (
   return pipeTextThrougCmd(text, rootPath, cmd);
 };
 
-const encryptFile = (
-  f: string,
-  rootPath: string | undefined,
-  vaultId: string,
-  config: vscode.WorkspaceConfiguration
-) => {
-  console.log(`Encrypt file: ${f}`);
-
-  let cmd = `${config.executablePath} encrypt "${f}"`;
-  cmd += ` --encrypt-vault-id="${vaultId}"`;
-
-  if (!!rootPath) {
-    exec(cmd, { cwd: rootPath });
-  } else {
-    exec(cmd);
-  }
-};
-
-const decryptFile = async (
-  f: string,
-  rootPath: string | undefined,
-  config: vscode.WorkspaceConfiguration
-) => {
-  console.log(`Decrypt file: ${f}`);
-
-  const cmd = `${config.executablePath} decrypt "${f}"`;
-
-  if (!!rootPath) {
-    await exec(cmd, { cwd: rootPath });
-  } else {
-    await exec(cmd);
-  }
-};
-
-const exec = async (cmd: string, opt = {}) => {
-  console.log(`> ${cmd}`);
-  return await execAsync(cmd, opt);
-};
+function selectEverything(editor: vscode.TextEditor) {
+  const firstLine = editor.document.lineAt(0);
+  const lastLine = editor.document.lineAt(editor.document.lineCount - 1);
+  const textRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
+  return textRange;
+}
